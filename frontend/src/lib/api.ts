@@ -39,6 +39,7 @@ export interface User {
   _id: string;
   username: string;
   email: string;
+  avatar?: string;
   token?: string;
 }
 
@@ -62,6 +63,12 @@ export const authApi = {
     fetchApi<User>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+
+  googleLogin: (credential: string) =>
+    fetchApi<User>('/api/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential }),
     }),
 
   getMe: () => fetchApi<User>('/api/auth/me'),

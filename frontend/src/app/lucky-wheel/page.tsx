@@ -1,32 +1,33 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
+// import { useEffect } from 'react';
+// import { useRouter } from 'next/navigation';
+// import Link from 'next/link';
+// import { useAuth } from '@/contexts/AuthContext';
 import LuckyWheel from '@/components/LuckyWheel';
 
 export default function LuckyWheelPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  // TODO: Bật lại khi cần login
+  // const { user, loading } = useAuth();
+  // const router = useRouter();
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
-  }, [user, loading, router]);
+  // useEffect(() => {
+  //   if (!loading && !user) {
+  //     router.push('/login');
+  //   }
+  // }, [user, loading, router]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-red-600 to-red-800">
-        <div className="text-2xl text-white">Loading...</div>
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-red-600 to-red-800">
+  //       <div className="text-2xl text-white">Loading...</div>
+  //     </div>
+  //   );
+  // }
 
-  if (!user) {
-    return null;
-  }
+  // if (!user) {
+  //   return null;
+  // }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-red-600 via-red-700 to-red-900 relative overflow-hidden">
@@ -47,6 +48,12 @@ export default function LuckyWheelPage() {
 
       {/* Header */}
       <header className="relative z-10 p-4">
+        <div className="max-w-4xl mx-auto text-center">
+          <span className="text-white/80 text-sm">
+            Chúc Mừng Năm Mới 2025!
+          </span>
+        </div>
+        {/* TODO: Bật lại khi cần login
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <Link
             href="/chat"
@@ -58,10 +65,11 @@ export default function LuckyWheelPage() {
             Xin chào, <strong>{user.username}</strong>
           </span>
         </div>
+        */}
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 flex flex-col items-center justify-center px-4 py-8">
+      <main className="flex flex-col items-center justify-center px-4 py-8">
         <h1 className="text-4xl md:text-5xl font-bold text-yellow-300 text-center mb-2 drop-shadow-lg">
           🧧 Vòng Quay May Mắn 🧧
         </h1>

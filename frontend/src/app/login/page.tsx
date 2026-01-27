@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
@@ -10,7 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, googleLogin } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -19,6 +20,25 @@ export default function LoginPage() {
     setLoading(true);
 
     const result = await login(email, password);
+
+    if (result.error) {
+      setError(result.error);
+      setLoading(false);
+    } else {
+      router.push('/chat');
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) {
+      setError('Google login failed');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    const result = await googleLogin(credentialResponse.credential);
 
     if (result.error) {
       setError(result.error);
@@ -75,7 +95,23 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-gray-600">
+        <div className="my-6 flex items-center">
+          <div className="flex-1 border-t border-gray-300"></div>
+          <span className="px-4 text-gray-500 text-sm">OR</span>
+          <div className="flex-1 border-t border-gray-300"></div>
+        </div>
+
+        <div className="flex justify-center">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError('Google login failed')}
+            theme="outline"
+            size="large"
+            width="100%"
+          />
+        </div>
+
+        <p className="mt-6 text-center text-gray-600">
           Don&apos;t have an account?{' '}
           <Link href="/register" className="text-blue-500 hover:underline">
             Register

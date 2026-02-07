@@ -1,6 +1,15 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  writeBatch,
+} from "firebase/firestore";
 
 interface Prize {
   id: number;
@@ -221,6 +230,8 @@ function Confetti({ show }: { show: boolean }) {
   );
 }
 
+const PRIZES_COLLECTION = "prizes";
+
 export default function LuckyWheel() {
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
@@ -229,6 +240,7 @@ export default function LuckyWheel() {
   const [showFireworks, setShowFireworks] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [spinDuration, setSpinDuration] = useState(5000);
+  const [loading, setLoading] = useState(true);
   const wheelRef = useRef<HTMLDivElement>(null);
 
   // Prize management states
@@ -241,25 +253,95 @@ export default function LuckyWheel() {
     value: "",
   });
 
-  const addPrize = () => {
-    if (!newPrize.text || !newPrize.value) return;
-    const newId = Math.max(...prizes.map((p) => p.id), 0) + 1;
-    setPrizes([...prizes, { ...newPrize, id: newId }]);
-    setNewPrize({ text: "", color: "#FF6B6B", value: "" });
+  // Load prizes from Firebase on mount
+  const loadPrizes = useCallback(async () => {
+    try {
+      console.log("[LuckyWheel] Loading prizes from Firebase...");
+      console.log("[LuckyWheel] DB instance:", db ? "OK" : "NULL");
+      const querySnapshot = await getDocs(collection(db, PRIZES_COLLECTION));
+      console.log("[LuckyWheel] Firestore response, docs:", querySnapshot.size);
+      if (!querySnapshot.empty) {
+        const loadedPrizes: Prize[] = [];
+        querySnapshot.forEach((docSnap) => {
+          loadedPrizes.push(docSnap.data() as Prize);
+        });
+        // Sort by id
+        loadedPrizes.sort((a, b) => a.id - b.id);
+        console.log("[LuckyWheel] Loaded prizes:", loadedPrizes);
+        setPrizes(loadedPrizes);
+      } else {
+        console.log("[LuckyWheel] No prizes found, initializing defaults...");
+        // Initialize with default prizes if collection is empty
+        await initializeDefaultPrizes();
+      }
+    } catch (error) {
+      console.error("[LuckyWheel] Error loading prizes:", error);
+      // Fallback dùng default prizes nếu Firebase lỗi
+      setPrizes(defaultPrizes);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initialize default prizes in Firebase
+  const initializeDefaultPrizes = async () => {
+    try {
+      const batch = writeBatch(db);
+      defaultPrizes.forEach((prize) => {
+        const docRef = doc(db, PRIZES_COLLECTION, prize.id.toString());
+        batch.set(docRef, prize);
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error("Error initializing prizes:", error);
+    }
   };
 
-  const updatePrize = () => {
+  useEffect(() => {
+    loadPrizes();
+  }, [loadPrizes]);
+
+  // Save prize to Firebase
+  const savePrizeToFirebase = async (prize: Prize) => {
+    try {
+      await setDoc(doc(db, PRIZES_COLLECTION, prize.id.toString()), prize);
+    } catch (error) {
+      console.error("Error saving prize:", error);
+    }
+  };
+
+  // Delete prize from Firebase
+  const deletePrizeFromFirebase = async (id: number) => {
+    try {
+      await deleteDoc(doc(db, PRIZES_COLLECTION, id.toString()));
+    } catch (error) {
+      console.error("Error deleting prize:", error);
+    }
+  };
+
+  const addPrize = async () => {
+    if (!newPrize.text || !newPrize.value) return;
+    const newId = Math.max(...prizes.map((p) => p.id), 0) + 1;
+    const prize = { ...newPrize, id: newId };
+    setPrizes([...prizes, prize]);
+    setNewPrize({ text: "", color: "#FF6B6B", value: "" });
+    await savePrizeToFirebase(prize);
+  };
+
+  const updatePrize = async () => {
     if (!editingPrize) return;
     setPrizes(prizes.map((p) => (p.id === editingPrize.id ? editingPrize : p)));
     setEditingPrize(null);
+    await savePrizeToFirebase(editingPrize);
   };
 
-  const deletePrize = (id: number) => {
+  const deletePrize = async (id: number) => {
     if (prizes.length <= 2) {
       alert("Cần ít nhất 2 giải thưởng!");
       return;
     }
     setPrizes(prizes.filter((p) => p.id !== id));
+    await deletePrizeFromFirebase(id);
   };
 
   const resetWheel = () => {
@@ -270,6 +352,34 @@ export default function LuckyWheel() {
     setHasSpun(false);
   };
 
+  // Parse giá trị tiền từ chuỗi value (VD: "50,000đ" -> 50000)
+  const parseValue = (value: string): number => {
+    const num = value.replace(/[^\d]/g, '');
+    return parseInt(num, 10) || 0;
+  };
+
+  // Weighted random: 20K-100K xuất hiện nhiều nhất
+  const weightedRandomIndex = (): number => {
+    const values = prizes.map(p => parseValue(p.value));
+
+    // Phân bổ xác suất theo khoảng giá trị
+    const weights = values.map(v => {
+      if (v >= 20000 && v <= 100000) return 10; // 20K-100K: cao nhất
+      if (v >= 5000 && v < 20000) return 4;     // 5K-10K: trung bình
+      if (v > 100000 && v <= 200000) return 2;  // 200K: thấp
+      return 1;                                  // 500K+: rất thấp
+    });
+
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    let random = Math.random() * totalWeight;
+
+    for (let i = 0; i < weights.length; i++) {
+      random -= weights[i];
+      if (random <= 0) return i;
+    }
+    return weights.length - 1;
+  };
+
   const spinWheel = () => {
     if (isSpinning || hasSpun) return;
 
@@ -278,28 +388,31 @@ export default function LuckyWheel() {
     setShowModal(false);
     setShowFireworks(false);
 
-    // Random spin duration từ 4-7 giây
-    const duration = 4000 + Math.random() * 3000;
+    // Thời gian quay dài hơn: 8-15 giây
+    const duration = 8000 + Math.random() * 7000;
     setSpinDuration(duration);
 
-    // Luôn bắt đầu từ 0, quay số vòng ngẫu nhiên
-    const spins = 8 + Math.random() * 5;
-    const randomAngle = Math.floor(Math.random() * 360);
-    const totalRotation = spins * 360 + randomAngle;
+    const segmentAngle = 360 / prizes.length;
+
+    // Weighted random: ưu tiên giải thưởng mệnh giá thấp
+    const randomPrizeIndex = weightedRandomIndex();
+
+    // Tính góc cần dừng để mũi tên chỉ vào giải được chọn
+    // Thêm random offset trong segment để không luôn dừng ở giữa
+    const offsetInSegment = (Math.random() - 0.5) * segmentAngle * 0.8;
+    const targetAngle = randomPrizeIndex * segmentAngle + offsetInSegment;
+
+    // Số vòng quay nhiều hơn: 15-30 vòng
+    const spins = 15 + Math.floor(Math.random() * 15);
+
+    // Góc cuối = góc để dừng đúng vị trí (đảo ngược vì vòng quay theo chiều kim đồng hồ)
+    const finalAngle = (360 - targetAngle + 360) % 360;
+    const totalRotation = spins * 360 + finalAngle;
 
     setRotation(totalRotation);
 
     setTimeout(() => {
-      const finalAngle = totalRotation % 360;
-      const segmentAngle = 360 / prizes.length;
-      // Tính toán prize index dựa trên góc cuối cùng
-      // Cộng thêm segmentAngle/2 vì segment được vẽ với offset -segmentAngle/2
-      const normalizedAngle = (((360 - finalAngle) % 360) + 360) % 360;
-      const adjustedAngle = (normalizedAngle + segmentAngle / 2) % 360;
-      const prizeIndex =
-        Math.floor(adjustedAngle / segmentAngle) % prizes.length;
-
-      setResult(prizes[prizeIndex]);
+      setResult(prizes[randomPrizeIndex]);
       setTimeout(() => {
         setShowModal(true);
         setShowFireworks(true);
@@ -317,6 +430,15 @@ export default function LuckyWheel() {
   };
 
   const segmentAngle = 360 / prizes.length;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96">
+        <div className="text-4xl animate-spin">🎡</div>
+        <p className="mt-4 text-white/80">Đang tải...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center">
